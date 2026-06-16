@@ -21,6 +21,8 @@ export default function InpaintEditor() {
   const [hasImage, setHasImage] = useState(false);
   const [brushSize, setBrushSize] = useState(40);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
+  // 드래그 앤 드롭 진행 중 시각 피드백
+  const [isDragOver, setIsDragOver] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -75,6 +77,33 @@ export default function InpaintEditor() {
     };
     reader.readAsDataURL(file);
   }, []);
+
+  // ---------- 1-b) 드래그 앤 드롭 업로드 ----------
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    // 파일을 끌고 들어왔을 때만 복사 커서 표시
+    if (e.dataTransfer.types.includes("Files")) {
+      e.dataTransfer.dropEffect = "copy";
+      setIsDragOver(true);
+    }
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    // 자식 요소로 이동하며 발생하는 leave는 무시하고, 영역을 완전히 벗어날 때만 해제
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+    setIsDragOver(false);
+  }, []);
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setIsDragOver(false);
+      const file = e.dataTransfer.files?.[0];
+      if (file) handleUpload(file);
+    },
+    [handleUpload]
+  );
 
   // ---------- 2) 브러시(마스킹) 기능 ----------
   const getCanvasPoint = useCallback(
@@ -285,7 +314,16 @@ export default function InpaintEditor() {
           <h2 className="text-sm font-semibold text-neutral-300">
             원본 / 마스킹
           </h2>
-          <div className="flex min-h-[320px] items-center justify-center rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
+          <div
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            className={`flex min-h-[320px] items-center justify-center rounded-xl border p-4 transition-colors ${
+              isDragOver
+                ? "border-rose-500 border-dashed bg-rose-950/30"
+                : "border-neutral-800 bg-neutral-900/40"
+            }`}
+          >
             {/* 캔버스는 항상 마운트해 두고(ref 안정성), 이미지가 없을 때만 숨깁니다. */}
             <div
               className="relative touch-none"
@@ -310,9 +348,33 @@ export default function InpaintEditor() {
               />
             </div>
             {!hasImage && (
-              <p className="text-center text-sm text-neutral-500">
-                제품 사진을 업로드하면 여기에 표시됩니다.
-              </p>
+              <div className="pointer-events-none flex flex-col items-center gap-2 text-center">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="32"
+                  height="32"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className={isDragOver ? "text-rose-400" : "text-neutral-600"}
+                >
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="17 8 12 3 7 8" />
+                  <line x1="12" y1="3" x2="12" y2="15" />
+                </svg>
+                <p
+                  className={`text-sm ${
+                    isDragOver ? "text-rose-300" : "text-neutral-500"
+                  }`}
+                >
+                  {isDragOver
+                    ? "여기에 사진을 놓으세요"
+                    : "사진을 여기로 끌어다 놓거나 상단의 업로드 버튼을 누르세요."}
+                </p>
+              </div>
             )}
           </div>
         </div>
