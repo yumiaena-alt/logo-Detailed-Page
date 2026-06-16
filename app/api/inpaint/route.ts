@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Replicate from "replicate";
+import sharp from "sharp";
 
 export const maxDuration = 120;
 export const runtime = "nodejs";
@@ -58,13 +59,21 @@ export async function POST(req: NextRequest) {
   const replicate = new Replicate({ auth: token });
 
   try {
+    // remove-object(LaMa) 모델은 RGB 이미지(3채널) + 마스크(1채널) = 4채널 입력을 기대한다.
+    // 클라이언트가 알파 채널이 포함된 RGBA(PNG, 4채널) 이미지를 보내면 모델 내부에서
+    // 4 + 1 = 5채널이 되어 "expected input to have 4 channels, but got 5 channels" 오류가 난다.
+    // 클라이언트 상태(캐시된 dataURL 등)와 무관하게 항상 안전하도록 서버에서 강제로
+    // 알파 채널을 제거(흰색 배경으로 평탄화)해 RGB로 변환한다. 마스크도 단일 채널로 정규화한다.
+    const safeImage = await flattenToRgb(image);
+    const safeMask = await maskToGray(mask);
+
     // 커뮤니티 모델은 모델명만으로 실행할 수 없고 버전 해시가 필요합니다.
     // REPLICATE_MODEL에 버전이 없으면 런타임에 최신 버전을 조회해 채웁니다.
     const ref = await resolveVersionedRef(replicate, MODEL);
 
     // LaMa(remove-object): image + mask 만 필요. 마스크 흰색=제거 영역.
     const output = await replicate.run(ref, {
-      input: { image, mask },
+      input: { image: safeImage, mask: safeMask },
     });
 
     const rawUrl = await normalizeOutput(output);
@@ -103,6 +112,43 @@ async function resolveVersionedRef(
     throw new Error(`모델 ${ref}의 최신 버전을 찾을 수 없습니다.`);
   }
   return `${owner}/${name}:${version}`;
+}
+
+/**
+ * base64 dataURL을 디코드해 알파 채널을 제거(흰색 배경으로 평탄화)한 RGB JPEG dataURL로 변환한다.
+ * remove-object(LaMa) 모델이 기대하는 3채널 RGB 입력을 보장해 채널 수 불일치 오류를 막는다.
+ */
+async function flattenToRgb(dataUrl: string): Promise<string> {
+  const buf = dataUrlToBuffer(dataUrl);
+  if (!buf) return dataUrl; // dataURL이 아니면(예: 외부 URL) 그대로 둔다.
+  const out = await sharp(buf)
+    .flatten({ background: { r: 255, g: 255, b: 255 } }) // 알파 → 흰색 배경으로 합성
+    .removeAlpha()
+    .jpeg({ quality: 95 })
+    .toBuffer();
+  return `data:image/jpeg;base64,${out.toString("base64")}`;
+}
+
+/**
+ * 마스크 dataURL을 단일 채널(그레이스케일) PNG로 정규화한다.
+ * 흰색=제거 영역 규칙은 유지된다.
+ */
+async function maskToGray(dataUrl: string): Promise<string> {
+  const buf = dataUrlToBuffer(dataUrl);
+  if (!buf) return dataUrl;
+  const out = await sharp(buf)
+    .flatten({ background: { r: 0, g: 0, b: 0 } }) // 마스크 배경은 검정(유지 영역)
+    .removeAlpha()
+    .grayscale()
+    .png()
+    .toBuffer();
+  return `data:image/png;base64,${out.toString("base64")}`;
+}
+
+function dataUrlToBuffer(dataUrl: string): Buffer | null {
+  const match = /^data:[^;]+;base64,(.+)$/s.exec(dataUrl);
+  if (!match) return null;
+  return Buffer.from(match[1], "base64");
 }
 
 async function normalizeOutput(output: unknown): Promise<string | null> {
