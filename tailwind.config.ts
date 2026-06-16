@@ -11,6 +11,14 @@ const config: Config = {
         background: "var(--background)",
         foreground: "var(--foreground)",
       },
+      keyframes: {
+        shimmer: {
+          "100%": { transform: "translateX(200%)" },
+        },
+      },
+      animation: {
+        shimmer: "shimmer 2s infinite",
+      },
     },
   },
   plugins: [],
