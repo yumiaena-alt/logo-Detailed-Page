@@ -58,8 +58,12 @@ export async function POST(req: NextRequest) {
   const replicate = new Replicate({ auth: token });
 
   try {
+    // 커뮤니티 모델은 모델명만으로 실행할 수 없고 버전 해시가 필요합니다.
+    // REPLICATE_MODEL에 버전이 없으면 런타임에 최신 버전을 조회해 채웁니다.
+    const ref = await resolveVersionedRef(replicate, MODEL);
+
     // LaMa(remove-object): image + mask 만 필요. 마스크 흰색=제거 영역.
-    const output = await replicate.run(MODEL, {
+    const output = await replicate.run(ref, {
       input: { image, mask },
     });
 
@@ -79,6 +83,26 @@ export async function POST(req: NextRequest) {
       err instanceof Error ? err.message : "Inpainting 처리 중 오류가 발생했습니다.";
     return NextResponse.json({ error: message }, { status: 500 });
   }
+}
+
+/**
+ * "owner/name" 형태(버전 없음)면 최신 버전을 조회해 "owner/name:version"으로 만듭니다.
+ * 이미 버전이 포함돼 있으면 그대로 반환합니다.
+ * 커뮤니티 모델은 버전 기반 prediction만 지원하므로 이 변환이 필요합니다.
+ */
+async function resolveVersionedRef(
+  replicate: Replicate,
+  ref: string
+): Promise<`${string}/${string}:${string}`> {
+  if (ref.includes(":")) return ref as `${string}/${string}:${string}`;
+
+  const [owner, name] = ref.split("/");
+  const model = await replicate.models.get(owner, name);
+  const version = model.latest_version?.id;
+  if (!version) {
+    throw new Error(`모델 ${ref}의 최신 버전을 찾을 수 없습니다.`);
+  }
+  return `${owner}/${name}:${version}`;
 }
 
 async function normalizeOutput(output: unknown): Promise<string | null> {
