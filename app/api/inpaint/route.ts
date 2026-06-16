@@ -72,15 +72,19 @@ export async function POST(req: NextRequest) {
     });
 
     // 모델에 따라 출력은 문자열 URL, 문자열 배열, 또는 스트림 객체일 수 있습니다.
-    const url = await normalizeOutput(output);
-    if (!url) {
+    const rawUrl = await normalizeOutput(output);
+    if (!rawUrl) {
       return NextResponse.json(
         { error: "모델이 이미지를 반환하지 않았습니다." },
         { status: 502 }
       );
     }
 
-    return NextResponse.json({ output: url });
+    // CDN URL이면 서버에서 fetch해 base64 dataURL로 변환합니다.
+    // 클라이언트 canvas가 CORS 문제 없이 toDataURL()을 호출할 수 있도록
+    // 2단계 로고 합성에서 항상 data URL을 받아야 합니다.
+    const dataUrl = await toDataUrl(rawUrl);
+    return NextResponse.json({ output: dataUrl });
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Inpainting 처리 중 오류가 발생했습니다.";
@@ -89,10 +93,11 @@ export async function POST(req: NextRequest) {
 }
 
 /**
- * Replicate 출력 형태를 단일 이미지 URL(또는 dataURL)로 정규화합니다.
- * - string: 그대로 사용
- * - string[]: 첫 번째 요소 사용
- * - FileOutput/ReadableStream: dataURL로 변환
+ * Replicate 출력 형태를 단일 이미지 URL 문자열로 정규화합니다.
+ * - string: 그대로 반환
+ * - string[]: 첫 번째 요소 반환
+ * - FileOutput (replicate ≥ 0.30): .url() 호출
+ * - ReadableStream: base64 dataURL로 변환
  */
 async function normalizeOutput(output: unknown): Promise<string | null> {
   const first = Array.isArray(output) ? output[0] : output;
@@ -100,12 +105,10 @@ async function normalizeOutput(output: unknown): Promise<string | null> {
 
   if (typeof first === "string") return first;
 
-  // replicate >= 0.30: FileOutput 객체는 .url() 메서드를 제공
   if (typeof (first as { url?: () => URL }).url === "function") {
     return (first as { url: () => URL }).url().toString();
   }
 
-  // ReadableStream → base64 dataURL
   if (first instanceof ReadableStream) {
     const res = new Response(first);
     const buffer = Buffer.from(await res.arrayBuffer());
@@ -113,4 +116,17 @@ async function normalizeOutput(output: unknown): Promise<string | null> {
   }
 
   return null;
+}
+
+/**
+ * HTTP(S) URL이면 서버에서 fetch해 base64 dataURL로 변환합니다.
+ * 이미 dataURL이면 그대로 반환합니다.
+ * 클라이언트 캔버스의 toDataURL() 호출 시 CORS taint를 방지하기 위함입니다.
+ */
+async function toDataUrl(url: string): Promise<string> {
+  if (url.startsWith("data:")) return url;
+  const res = await fetch(url);
+  const ct = res.headers.get("content-type") || "image/png";
+  const buffer = Buffer.from(await res.arrayBuffer());
+  return `data:${ct};base64,${buffer.toString("base64")}`;
 }

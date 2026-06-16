@@ -9,12 +9,11 @@ export default function Home() {
             Studio Renderer · MVP
           </p>
           <h1 className="text-2xl font-bold sm:text-3xl">
-            1단계 · 이미지 업로드 &amp; 텍스트 제거 (Inpainting)
+            브랜드 스튜디오 렌더러
           </h1>
           <p className="mx-auto mt-3 max-w-2xl text-sm leading-relaxed text-neutral-400">
-            원본 제품 사진을 업로드한 뒤, 지우고 싶은 중국어·불필요한 글자 위를
-            브러시로 문지르세요. AI가 글자를 흔적 없이 지우고 주변 제품 표면으로
-            자연스럽게 채워 줍니다.
+            제품 사진의 중국어·불필요한 글자를 AI로 지우고(1단계), 브랜드 로고를
+            자유롭게 얹어(2단계) 최고급 스튜디오 컷으로 재렌더링하는 MVP 툴입니다.
           </p>
         </header>
 

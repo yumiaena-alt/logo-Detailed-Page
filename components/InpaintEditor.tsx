@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import LogoCompositor from "@/components/LogoCompositor";
 
 // 업로드 이미지를 캔버스에 띄울 때 사용할 최대 한 변 길이(px).
 // 너무 큰 원본은 비율을 유지하며 축소해 처리/전송 비용을 줄입니다.
@@ -317,19 +318,28 @@ export default function InpaintEditor() {
         </div>
 
         <div className="flex flex-col gap-2">
-          <h2 className="text-sm font-semibold text-neutral-300">결과</h2>
+          <h2 className="text-sm font-semibold text-neutral-300">텍스트 제거 결과</h2>
           <div className="flex min-h-[320px] items-center justify-center rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
             {loading ? (
               <p className="text-sm text-neutral-400">
                 AI가 글자를 지우고 표면을 채우는 중…
               </p>
             ) : resultUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={resultUrl}
-                alt="Inpainting 결과"
-                className="max-h-[600px] w-auto rounded-lg"
-              />
+              <div className="flex flex-col items-center gap-3">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={resultUrl}
+                  alt="Inpainting 결과"
+                  className="max-h-[540px] w-auto rounded-lg"
+                />
+                <a
+                  href={resultUrl}
+                  download="inpainted.png"
+                  className="text-xs text-neutral-500 underline hover:text-neutral-300"
+                >
+                  이미지 다운로드
+                </a>
+              </div>
             ) : (
               <p className="text-center text-sm text-neutral-500">
                 텍스트를 지우면 결과 이미지가 여기에 표시됩니다.
@@ -338,6 +348,9 @@ export default function InpaintEditor() {
           </div>
         </div>
       </div>
+
+      {/* 2단계: 인페인팅 결과가 있을 때만 로고 합성 섹션 표시 */}
+      {resultUrl && <LogoCompositor inpaintedUrl={resultUrl} />}
     </div>
   );
 }
