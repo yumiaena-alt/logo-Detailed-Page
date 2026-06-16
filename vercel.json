@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "app/api/inpaint/route.ts": { "maxDuration": 120 },
+    "app/api/generate/route.ts": { "maxDuration": 180 },
+    "app/api/render/route.ts": { "maxDuration": 30 }
+  }
+}
