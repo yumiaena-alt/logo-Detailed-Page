@@ -23,6 +23,8 @@ export default function InpaintEditor() {
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   // 드래그 앤 드롭 진행 중 시각 피드백
   const [isDragOver, setIsDragOver] = useState(false);
+  // 브러시 미리보기: CSS 픽셀 기준 위치·반지름 (null = 캔버스 밖)
+  const [brushPreview, setBrushPreview] = useState<{ x: number; y: number; r: number } | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -147,6 +149,21 @@ export default function InpaintEditor() {
     [brushSize]
   );
 
+  // 포인터 위치로부터 CSS 기준 브러시 미리보기 좌표·반지름 계산
+  const updateBrushPreview = useCallback(
+    (e: React.PointerEvent<HTMLCanvasElement>) => {
+      const canvas = drawCanvasRef.current;
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      const cssX = e.clientX - rect.left;
+      const cssY = e.clientY - rect.top;
+      // 캔버스 픽셀 반지름 → CSS 픽셀 반지름으로 변환
+      const cssRadius = (brushSize / 2) * (rect.width / canvas.width);
+      setBrushPreview({ x: cssX, y: cssY, r: cssRadius });
+    },
+    [brushSize]
+  );
+
   const handlePointerDown = useCallback(
     (e: React.PointerEvent<HTMLCanvasElement>) => {
       if (!hasImage) return;
@@ -155,24 +172,27 @@ export default function InpaintEditor() {
       const p = getCanvasPoint(e);
       lastPointRef.current = p;
       drawStroke(p, p);
+      updateBrushPreview(e);
     },
-    [hasImage, getCanvasPoint, drawStroke]
+    [hasImage, getCanvasPoint, drawStroke, updateBrushPreview]
   );
 
   const handlePointerMove = useCallback(
     (e: React.PointerEvent<HTMLCanvasElement>) => {
+      updateBrushPreview(e);
       if (!isDrawingRef.current) return;
       const p = getCanvasPoint(e);
       const last = lastPointRef.current ?? p;
       drawStroke(last, p);
       lastPointRef.current = p;
     },
-    [getCanvasPoint, drawStroke]
+    [getCanvasPoint, drawStroke, updateBrushPreview]
   );
 
   const endStroke = useCallback(() => {
     isDrawingRef.current = false;
     lastPointRef.current = null;
+    setBrushPreview(null);
   }, []);
 
   const clearMask = useCallback(() => {
@@ -344,8 +364,21 @@ export default function InpaintEditor() {
                 onPointerMove={handlePointerMove}
                 onPointerUp={endStroke}
                 onPointerLeave={endStroke}
-                className="absolute left-0 top-0 h-full w-full cursor-crosshair rounded-lg"
+                className="absolute left-0 top-0 h-full w-full rounded-lg"
+                style={{ cursor: "none" }}
               />
+              {/* 브러시 크기 원형 미리보기 — 실제 브러시 크기를 CSS 픽셀로 환산해 표시 */}
+              {brushPreview && (
+                <div
+                  className="pointer-events-none absolute rounded-full border-2 border-white mix-blend-difference"
+                  style={{
+                    left: brushPreview.x - brushPreview.r,
+                    top: brushPreview.y - brushPreview.r,
+                    width: brushPreview.r * 2,
+                    height: brushPreview.r * 2,
+                  }}
+                />
+              )}
             </div>
             {!hasImage && (
               <div className="pointer-events-none flex flex-col items-center gap-2 text-center">
