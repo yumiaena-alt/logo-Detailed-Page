@@ -64,15 +64,22 @@ export default function InpaintEditor() {
 
         const ctx = imageCanvas.getContext("2d");
         if (!ctx) return;
+        // 투명 영역이 있는 PNG도 검정이 아닌 흰색으로 평탄화되도록 배경을 먼저 채운다.
         ctx.clearRect(0, 0, width, height);
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, width, height);
         ctx.drawImage(img, 0, 0, width, height);
 
         // 마스크 캔버스 초기화
         const drawCtx = drawCanvas.getContext("2d");
         drawCtx?.clearRect(0, 0, width, height);
 
-        // 원본을 PNG dataURL로 저장(축소된 해상도 기준)
-        sourceDataUrlRef.current = imageCanvas.toDataURL("image/png");
+        // 원본을 RGB(JPEG) dataURL로 저장한다.
+        // PNG(toDataURL("image/png"))는 항상 알파 채널을 포함한 RGBA(4채널)로 인코딩되어,
+        // remove-object(LaMa) 모델이 기대하는 RGB(3채널) + 마스크(1채널) = 4채널 입력과 어긋나
+        // "expected input to have 4 channels, but got 5 channels" 오류를 유발한다.
+        // JPEG는 알파 채널이 없어 항상 3채널 RGB로 인코딩되므로 이 문제를 방지한다.
+        sourceDataUrlRef.current = imageCanvas.toDataURL("image/jpeg", 0.95);
         setHasImage(true);
       };
       img.src = e.target?.result as string;
