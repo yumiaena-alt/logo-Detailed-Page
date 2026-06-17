@@ -110,7 +110,12 @@ export async function POST(req: NextRequest) {
   const replicate = new Replicate({ auth: token });
 
   try {
-    const output = await replicate.run(model, { input });
+    // 커뮤니티 모델(stability-ai/sdxl 등)은 버전 해시 없이 모델명만으로
+    // 실행하면 official-models 엔드포인트로 요청돼 404가 납니다.
+    // 버전이 없으면 런타임에 최신 버전을 조회해 "owner/name:version"으로 고정합니다.
+    const ref = await resolveVersionedRef(replicate, model);
+
+    const output = await replicate.run(ref, { input });
 
     const rawUrl = await resolveOutput(output);
     if (!rawUrl) {
@@ -133,6 +138,26 @@ export async function POST(req: NextRequest) {
 }
 
 // ── 헬퍼 ─────────────────────────────────────────────────────────────────────
+
+/**
+ * "owner/name" 형태(버전 없음)면 최신 버전을 조회해 "owner/name:version"으로 만듭니다.
+ * 이미 버전이 포함돼 있으면 그대로 반환합니다.
+ * 커뮤니티 모델은 버전 기반 prediction만 지원하므로 이 변환이 필요합니다.
+ */
+async function resolveVersionedRef(
+  replicate: Replicate,
+  ref: ModelRef
+): Promise<`${string}/${string}:${string}`> {
+  if (ref.includes(":")) return ref as `${string}/${string}:${string}`;
+
+  const [owner, name] = ref.split("/");
+  const model = await replicate.models.get(owner, name);
+  const version = model.latest_version?.id;
+  if (!version) {
+    throw new Error(`모델 ${ref}의 최신 버전을 찾을 수 없습니다.`);
+  }
+  return `${owner}/${name}:${version}`;
+}
 
 /**
  * Replicate 출력 형태를 단일 이미지 URL 문자열로 정규화합니다.
